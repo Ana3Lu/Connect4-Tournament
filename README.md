@@ -21,3 +21,11 @@ El proyecto utiliza principalmente numpy para el manejo del tablero. A medida qu
 ## Contribución por estudiante
 
 Cada integrante trabaja en su propia rama y mantiene su agente dentro de una subcarpeta personal en `groups`. Al finalizar el desarrollo, la política final se integra a la rama principal para ser evaluada en el torneo grupal.
+
+## Integrantes
+
+| Estudiante | Rama |
+|---|---|
+| Juliana Isabel Espinel | agente-juliana |
+| Ana Lucía Quintero | agente-ana |
+| Andrea Paola Urdaneta | agente-andrea |
