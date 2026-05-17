@@ -26,6 +26,6 @@ Cada integrante trabaja en su propia rama y mantiene su agente dentro de una sub
 
 | Estudiante | Rama |
 |---|---|
-| Juliana Isabel Espinel | agente-juliana |
-| Ana Lucía Quintero | agente-ana |
-| Andrea Paola Urdaneta | agente-andrea |
+| Juliana Isabel Espinel | Juliana |
+| Ana Lucía Quintero | Ana |
+| Andrea Paola Urdaneta | Andrea |
