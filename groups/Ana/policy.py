@@ -90,9 +90,9 @@ class AnaPolicy(Policy):
     def __init__(self, num_simulations: int = 200, reward_shaping: bool = False):
         self.num_simulations = num_simulations
         self.reward_shaping = reward_shaping
-        self._rng = None  # se inicializa en mount antes de cada partida
+        self._rng = np.random.RandomState()  # también en __init__ por si mount no se llama
 
-    def mount(self) -> None:
+    def mount(self, timeout=None) -> None:  # timeout ignorado, requerido por gradescope
         self._rng = np.random.RandomState()
 
     def act(self, s: np.ndarray) -> int:
@@ -138,12 +138,12 @@ class AnaPolicyPersistent(Policy):
     def __init__(self, num_simulations: int = 200, reward_shaping: bool = False):
         self.num_simulations = num_simulations
         self.reward_shaping = reward_shaping
-        self._rng = None  # se inicializa en mount antes de cada partida
+        self._rng = np.random.RandomState()  # también en __init__ por si mount no se llama
         self._N_s:  dict = {}  # estadísticas del árbol, se acumulan entre turnos
         self._N_sa: dict = {}
         self._Q_sa: dict = {}
 
-    def mount(self) -> None:
+    def mount(self, timeout=None) -> None:  # timeout ignorado, requerido por gradescope
         self._rng = np.random.RandomState()
         # reinicia el árbol al comienzo de cada partida nueva
         self._N_s  = {}
