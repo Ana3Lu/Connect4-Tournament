@@ -1,10 +1,11 @@
 """
-Implementación base de MCTS con UCT (single-agent).
+Implementación de MCTS con UCT para Connect-4 (two-player).
 
 Contiene dos funciones:
   - sample_action_from_inner_stats: convierte estadísticas de simulaciones internas
     en una distribución de probabilidad y muestrea una acción.
-  - mcts_uct: árbol de búsqueda Monte-Carlo con selección UCT para un solo agente.
+  - mcts_uct_two_player: árbol de búsqueda Monte-Carlo con selección UCT adaptado
+    a juegos de dos jugadores con perspectiva alternante.
 """
 
 import math
@@ -50,20 +51,22 @@ def sample_action_from_inner_stats(
     return actions[chosen], probs
 
 
-def mcts_uct(
+def mcts_uct_two_player(
     root_state: Any,
-    legal_actions_fn: Callable[[Any], Iterable[Any]],
-    successor_fn: Callable[[Any, Any, np.random.RandomState], Any],
+    legal_actions_fn: Callable[[Any], Iterable[Any]], # acciones legales para un estado dado
+    successor_fn: Callable[[Any, Any], Any], 
     terminal_fn: Callable[[Any], bool],
-    reward_fn: Callable[[Any], float],
-    *,
+    reward_fn: Callable[[Any, int, bool], float],
+    root_player: int, # jugador desde cuya perspectiva se evalúan las recompensas
+    *, 
     num_simulations: int,
     max_depth: int,
     exploration_c: float,
+    reward_shaping: bool, # activa bonificación intermedia por amenazas de 3 en línea
     rng: np.random.RandomState,
 ) -> Dict[str, Any]:
     """
-    MCTS single-agent con selección UCT.
+    MCTS con UCT para Connect-4 con perspectiva two-player.
 
     Mantiene tres estructuras a lo largo de todas las simulaciones:
       N_s[(s)]      — visitas al estado s
@@ -73,7 +76,8 @@ def mcts_uct(
     Cada simulación sigue tres fases:
       1. Selección y expansión: recorre el árbol con UCT hasta un nodo hoja
       2. Rollout: política aleatoria hasta terminal o max_depth
-      3. Backpropagación: actualiza Q con media incremental
+      3. Backpropagación: actualiza Q negando R en niveles del oponente,
+         porque lo que es bueno para uno es malo para el otro
     """
     N_s:  Dict[Any, int]               = {}
     N_sa: Dict[Tuple[Any, Any], int]   = {}
@@ -90,6 +94,7 @@ def mcts_uct(
             if not actions:
                 break
 
+            # prioriza acciones no visitadas para expandir el árbol, luego aplica UCT
             unvisited = [a for a in actions if (s, a) not in N_sa]
             if unvisited:
                 a = unvisited[0]  # orden determinista al expandir nodos nuevos
@@ -103,11 +108,12 @@ def mcts_uct(
                     ),
                 )
 
+            # agrega el par (s, a) al camino recorrido para backpropagación posterior
             path.append((s, a))
             N_s[s]       = N_s.get(s, 0) + 1
             N_sa[(s, a)] = N_sa.get((s, a), 0) + 1
             Q_sa.setdefault((s, a), 0.0)
-            s = successor_fn(s, a, rng)
+            s = successor_fn(s, a)  # sin rng dado que ConnectState.transition es determinista
             depth += 1
 
         # rollout aleatorio desde el nodo expandido
@@ -115,21 +121,21 @@ def mcts_uct(
             actions = list(legal_actions_fn(s))
             if not actions:
                 break
-            a = actions[rng.randint(len(actions))]
-            s = successor_fn(s, a, rng)
+            a = actions[rng.randint(len(actions))] # política aleatoria simple
+            s = successor_fn(s, a)
             depth += 1
 
-        # backpropagación con media incremental sobre el camino recorrido
-        R = reward_fn(s) if terminal_fn(s) else 0.0
-        for s_p, a_p in path:
-            Q_sa[(s_p, a_p)] += (R - Q_sa[(s_p, a_p)]) / N_sa[(s_p, a_p)]
+        # backpropagación: nodos pares son del agente (+R), impares del oponente (-R)
+        R = reward_fn(s, root_player, reward_shaping) if terminal_fn(s) else 0.0
+        for i, (s_p, a_p) in enumerate(path):
+            r = R if i % 2 == 0 else -R
+            Q_sa[(s_p, a_p)] += (r - Q_sa[(s_p, a_p)]) / N_sa[(s_p, a_p)]
 
     # estadísticas de la raíz para decidir qué acción recomendar
     root_actions = list(legal_actions_fn(root_state))
     q_root = {a: Q_sa[(root_state, a)] for a in root_actions if (root_state, a) in N_sa}
     n_root = {a: N_sa[(root_state, a)] for a in root_actions if (root_state, a) in N_sa}
 
-    # acción con mejor estimación, sorted para desempate determinista
-    best_action = max(sorted(q_root.keys()), key=lambda a: q_root[a]) if q_root else None
+    best_action = max(sorted(q_root.keys()), key=lambda a: q_root[a]) if q_root else None  # sorted para desempate determinista
 
     return {"q_root": q_root, "n_root": n_root, "best_action": best_action}
