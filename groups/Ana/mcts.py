@@ -64,6 +64,9 @@ def mcts_uct_two_player(
     exploration_c: float,
     reward_shaping: bool, # activa bonificación intermedia por amenazas de 3 en línea
     rng: np.random.RandomState,
+    N_s:  Dict[Any, int] | None = None,            # árbol persistente: visitas por estado
+    N_sa: Dict[Tuple[Any, Any], int] | None = None, # árbol persistente: visitas por (s,a)
+    Q_sa: Dict[Tuple[Any, Any], float] | None = None, # árbol persistente: valores estimados
 ) -> Dict[str, Any]:
     """
     MCTS con UCT para Connect-4 con perspectiva two-player.
@@ -79,9 +82,10 @@ def mcts_uct_two_player(
       3. Backpropagación: actualiza Q negando R en niveles del oponente,
          porque lo que es bueno para uno es malo para el otro
     """
-    N_s:  Dict[Any, int]               = {}
-    N_sa: Dict[Tuple[Any, Any], int]   = {}
-    Q_sa: Dict[Tuple[Any, Any], float] = {}
+    # si se pasan diccionarios externos se reutilizan, si no se crean nuevos cada vez
+    N_s  = N_s  if N_s  is not None else {}
+    N_sa = N_sa if N_sa is not None else {}
+    Q_sa = Q_sa if Q_sa is not None else {}
 
     for _ in range(num_simulations):
         path = []  # pares (s, a) visitados, necesarios para backprop
