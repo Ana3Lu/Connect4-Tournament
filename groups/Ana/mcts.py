@@ -125,8 +125,17 @@ def mcts_uct_two_player(
             actions = list(legal_actions_fn(s))
             if not actions:
                 break
-            a = actions[rng.randint(len(actions))] # política aleatoria simple
-            s = successor_fn(s, a)
+            # prioriza jugadas que generen victoria inmediata para el jugador actual, si no hay, elige aleatoriamente
+            played = False
+            for a in actions:
+                s_next = successor_fn(s, a)
+                if s_next.get_winner() == s.player:
+                    s = s_next
+                    played = True
+                    break
+            if not played:
+                a = actions[rng.randint(len(actions))] # política aleatoria simple
+                s = successor_fn(s, a)
             depth += 1
 
         # backpropagación: nodos pares son del agente (+R), impares del oponente (-R)

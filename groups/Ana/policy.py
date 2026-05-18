@@ -11,7 +11,7 @@ def _three_in_a_row_bonus(board: np.ndarray, player: int) -> float:
     """
     Diferencia de amenazas de 3 en línea entre player y su oponente.
     Una amenaza es una ventana de 4 celdas con 3 fichas propias y 1 vacía.
-    
+
     Un valor positivo indica que player tiene más amenazas activas que el oponente,
     es decir, más caminos abiertos para completar 4 en línea.
     """
@@ -65,7 +65,9 @@ def _reward(state: ConnectState, root_player: int, shaping: bool) -> float:
     if not shaping:
         return base
 
+    # calcula bonus por amenazas de 3 en línea
     bonus = _three_in_a_row_bonus(state.board, root_player)
+
     return float(np.clip(base + 0.1 * bonus, -1.0, 1.0))  # clip para mantener rango [-1, 1]
 
 
@@ -73,6 +75,26 @@ def _infer_player(s: np.ndarray) -> int:
     # jugador -1 empieza, si hay igual cantidad de fichas le toca a -1
     diff = int(np.sum(s == -1)) - int(np.sum(s == 1))
     return -1 if diff == 0 else 1
+
+
+def _immediate_move(state: ConnectState, player: int):
+    """Retorna columna ganadora o de bloqueo urgente, None si no existe."""
+    if state.is_final():
+        return None
+
+    free_cols = state.get_free_cols()
+    for col in free_cols:
+        if state.transition(col).get_winner() == player:   # movimiento ganador
+            return col
+        
+    # comprobar si el oponente tiene una jugada ganadora en su próximo turno y bloquearla 
+    for col in free_cols:
+        # simula la jugada desde la perspectiva del oponente (player invertido) y si existe una columna que le da la victoria
+        opp_state = ConnectState(board=state.board, player=-player)
+        if opp_state.transition(col).get_winner() == -player:  # bloqueo urgente
+            return col
+        
+    return None
 
 
 class AnaPolicy(Policy):
@@ -92,13 +114,27 @@ class AnaPolicy(Policy):
         self.reward_shaping = reward_shaping
         self._rng = np.random.RandomState()  # también en __init__ por si mount no se llama
 
-    def mount(self, timeout=None) -> None:  # timeout ignorado, requerido por gradescope
+    def mount(self, timeout=None) -> None:  # timeout en segundos (calibrar simulaciones)
         self._rng = np.random.RandomState()
+        if timeout is not None:
+            # medido localmente: ~107 sims/seg; factor 0.5 de margen para gradescope
+            self.num_simulations = max(50, int(timeout * 107 * 0.5))
 
     def act(self, s: np.ndarray) -> int:
         root_player = _infer_player(s)
         root = ConnectState(board=s, player=root_player)
 
+        # si el juego ha terminado, jugar una jugada aleatoria entre las columnas libres
+        if root.is_final():
+            free = root.get_free_cols()
+            return int(self._rng.choice(free)) if free else 0
+
+        # si hay jugada ganadora o bloqueo urgente, jugarla sin simular
+        immediate = _immediate_move(root, root_player)
+        if immediate is not None:
+            return immediate
+
+        # simula con MCTS/UCT desde el estado raíz para encontrar la mejor acción
         result = mcts_uct_two_player(
             root_state=root,
             legal_actions_fn=lambda st: st.get_free_cols(),
@@ -125,9 +161,8 @@ class AnaPolicyPersistent(Policy):
     Versión 2 — MCTS/UCT con árbol persistente entre turnos.
 
     A diferencia de la versión 1, N_s, N_sa y Q_sa no se descartan al terminar
-    cada turno sino que se acumulan a lo largo de toda la partida. 
-    
-    Así cada turno parte de estadísticas ya exploradas en lugar de cero, lo que implementa
+    cada turno sino que se acumulan a lo largo de toda la partida. Así cada turno
+    parte de estadísticas ya exploradas en lugar de cero, lo que implementa
     aprendizaje online: el agente mejora su política con la experiencia acumulada.
 
     Tornillos:
@@ -143,17 +178,29 @@ class AnaPolicyPersistent(Policy):
         self._N_sa: dict = {}
         self._Q_sa: dict = {}
 
-    def mount(self, timeout=None) -> None:  # timeout ignorado, requerido por gradescope
+    def mount(self, timeout=None) -> None:  # timeout en segundos, lo usa para calibrar simulaciones
         self._rng = np.random.RandomState()
-        # reinicia el árbol al comienzo de cada partida nueva
         self._N_s  = {}
         self._N_sa = {}
         self._Q_sa = {}
+        if timeout is not None:
+            # medido localmente: ~107 sims/seg; factor 0.5 de margen para gradescope
+            self.num_simulations = max(50, int(timeout * 107 * 0.5))
 
     def act(self, s: np.ndarray) -> int:
         root_player = _infer_player(s)
         root = ConnectState(board=s, player=root_player)
 
+        if root.is_final():
+            free = root.get_free_cols()
+            return int(self._rng.choice(free)) if free else 0
+
+        # si hay jugada ganadora o bloqueo urgente, jugarla sin simular
+        immediate = _immediate_move(root, root_player)
+        if immediate is not None:
+            return immediate
+
+        # simula con MCTS/UCT desde el estado raíz para encontrar la mejor acción
         result = mcts_uct_two_player(
             root_state=root,
             legal_actions_fn=lambda st: st.get_free_cols(),
@@ -166,7 +213,7 @@ class AnaPolicyPersistent(Policy):
             exploration_c=1.41,  # valor estándar UCT (sqrt(2))
             reward_shaping=self.reward_shaping,
             rng=self._rng,
-            N_s=self._N_s,    # se pasan los diccionarios acumulados
+            N_s=self._N_s,
             N_sa=self._N_sa,
             Q_sa=self._Q_sa,
         )
