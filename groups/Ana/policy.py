@@ -1,12 +1,63 @@
 import numpy as np
 from connect4.policy import Policy
+from connect4.connect_state import ConnectState
+try:
+    from mcts import mcts_uct_two_player       # ejecución para GradeScope
+except ModuleNotFoundError:
+    from groups.Ana.mcts import mcts_uct_two_player  # ejecución local desde raíz del proyecto
+
+
+def _reward(state: ConnectState, root_player: int) -> float:
+    """
+    Recompensa terminal desde la perspectiva de root_player.
+    +1 si ganó, -1 si perdió, 0 si empate.
+    """
+    winner = state.get_winner()
+    if winner == root_player:
+        return 1.0
+    elif winner == -root_player:
+        return -1.0
+    return 0.0
+
+
+def _infer_player(s: np.ndarray) -> int:
+    # jugador -1 empieza, así que si hay igual cantidad de fichas le toca a -1
+    diff = int(np.sum(s == -1)) - int(np.sum(s == 1))
+    return -1 if diff == 0 else 1
 
 
 class AnaPolicy(Policy):
+    """
+    Agente MCTS/UCT para Connect-4.
+    Tornillo: num_simulations — más simulaciones produce decisiones más informadas.
+    """
+
+    def __init__(self, num_simulations: int = 200):
+        self.num_simulations = num_simulations
+        self._rng = None
 
     def mount(self) -> None:
-        pass
+        self._rng = np.random.RandomState()
 
     def act(self, s: np.ndarray) -> int:
-        rng = np.random.default_rng()
-        return int(rng.choice([c for c in range(7) if s[0, c] == 0]))
+        root_player = _infer_player(s)
+        root = ConnectState(board=s, player=root_player)
+
+        result = mcts_uct_two_player(
+            root_state=root,
+            legal_actions_fn=lambda st: st.get_free_cols(),
+            successor_fn=lambda st, a: st.transition(a),
+            terminal_fn=lambda st: st.is_final(),
+            reward_fn=_reward,
+            root_player=root_player,
+            num_simulations=self.num_simulations,
+            max_depth=42,        # máximo de movimientos posibles en Connect-4
+            exploration_c=1.41,  # valor estándar UCT (sqrt(2))
+            rng=self._rng,
+        )
+
+        best = result["best_action"]
+        if best is None:
+            free = [c for c in range(7) if s[0, c] == 0]
+            return int(self._rng.choice(free))
+        return int(best)
