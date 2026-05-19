@@ -2,7 +2,7 @@ import numpy as np
 import pickle
 import os
 from connect4.policy import Policy
-from typing import override
+
 
 
 #  Helpers
