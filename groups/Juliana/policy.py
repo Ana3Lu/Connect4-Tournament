@@ -56,6 +56,7 @@ def _is_final(board: np.ndarray) -> bool:
 
 #  Heurística de desempate (usada en act())
 
+
 def _score_window(window: list[int], player: int) -> float:
     """Puntúa una ventana de 4 celdas a favor del jugador dado."""
     opp = -player
@@ -109,8 +110,8 @@ def _heuristic(board: np.ndarray, player: int) -> float:
     return score
 
 
-
 #  Agente Q-learning
+
 
 class QLearningAgent(Policy):
     """
@@ -149,7 +150,7 @@ class QLearningAgent(Policy):
         # Tabla Q:  bytes(board) → {col: Q-valor}
         self.q_table: dict[bytes, dict[int, float]] = {}
 
-    # Acceso a la tabla Q 
+    #Acceso a la tabla Q
 
     def _get_q(self, key: bytes, col: int) -> float:
         return self.q_table.get(key, {}).get(col, 0.0)
@@ -216,9 +217,9 @@ class QLearningAgent(Policy):
             eps = self._epsilon(ep)
             self._train_episode(rng, eps)
 
-    # mount()
+    #mount()
 
-    def mount(self) -> None:
+    def mount(self, *args, **kwargs) -> None:
         """
         Llamado una vez antes de comenzar el torneo.
         Carga tabla Q si existe; si no, entrena desde cero y la guarda.
@@ -234,7 +235,7 @@ class QLearningAgent(Policy):
             with open(self.save_path, "wb") as f:
                 pickle.dump(self.q_table, f)
 
-    #act() 
+    #act()
 
     def act(self, s: np.ndarray) -> int:
         """
@@ -252,22 +253,22 @@ class QLearningAgent(Policy):
         me = -1 if counts[-1] <= counts[1] else 1
         opp = -me
 
-        # Prioridad 1: ganar en este turno 
+        #Prioridad 1: ganar en este turno
         for col in free:
             test = _drop(s, col, me)
             if _check_winner(test) == me:
                 return col
 
-        # Prioridad 2: bloquear victoria rival 
+        #Prioridad 2: bloquear victoria rival
         for col in free:
             test = _drop(s, col, opp)
             if _check_winner(test) == opp:
                 return col
 
-        #Prioridad 3: Q-table 
+        #Prioridad 3: Q-table
         key = _state_key(s)
         if key in self.q_table:
             return self._best_q_col(key, free)
 
-        #Prioridad 4: heurística
+        #Prioridad 4: heurística 
         return max(free, key=lambda c: _heuristic(_drop(s, c, me), me))
