@@ -49,6 +49,8 @@ python main.py
 python run_tournament.py
 ```
 
+La versión `AnaPolicyPersistent` fue diseñada como candidata principal para el torneo debido a la reutilización de estadísticas entre turnos.
+
 Los resultados se guardan en:
 
 ```text
@@ -99,7 +101,7 @@ El archivo `entrega.ipynb` contiene:
 
 Los experimentos muestran que ambas versiones superan consistentemente al agente aleatorio y que el desempeño mejora al aumentar el número de simulaciones.
 
-La versión persistente tiende a obtener mejores resultados cuando el presupuesto de simulaciones es bajo.
+La persistencia del árbol modifica el comportamiento del agente entre turnos y puede aportar ventajas especialmente cuando el presupuesto de simulaciones es limitado.
 
 ---
 
