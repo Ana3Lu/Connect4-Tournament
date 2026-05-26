@@ -3,7 +3,7 @@ import numpy as np
 from connect4.policy import Policy
 
 
-class UCB1Policy(Policy):
+class SuperDuperAgente3000(Policy):
     """
     Agente UCB1 + Minimax para Connect-4.
 
