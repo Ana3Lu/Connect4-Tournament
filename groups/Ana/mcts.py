@@ -63,6 +63,7 @@ def mcts_uct_two_player(
     max_depth: int,
     exploration_c: float,
     reward_shaping: bool, # activa bonificación intermedia por amenazas de 3 en línea
+    smart_rollout: bool,   # activa rollout inteligente que prioriza jugadas que generan victoria inmediata
     rng: np.random.RandomState,
     N_s:  Dict[Any, int] | None = None,            # árbol persistente: visitas por estado
     N_sa: Dict[Tuple[Any, Any], int] | None = None, # árbol persistente: visitas por (s,a)
@@ -125,15 +126,19 @@ def mcts_uct_two_player(
             actions = list(legal_actions_fn(s))
             if not actions:
                 break
-            # prioriza jugadas que generen victoria inmediata para el jugador actual, si no hay, elige aleatoriamente
-            played = False
-            for a in actions:
-                s_next = successor_fn(s, a)
-                if s_next.get_winner() == s.player:
-                    s = s_next
-                    played = True
-                    break
-            if not played:
+            if smart_rollout:
+                # prioriza jugadas que generen victoria inmediata para el jugador actual, si no hay, elige aleatoriamente
+                played = False
+                for a in actions:
+                    s_next = successor_fn(s, a)
+                    if s_next.get_winner() == s.player:
+                        s = s_next
+                        played = True
+                        break
+                if not played:
+                    a = actions[rng.randint(len(actions))] # política aleatoria simple
+                    s = successor_fn(s, a)
+            else:
                 a = actions[rng.randint(len(actions))] # política aleatoria simple
                 s = successor_fn(s, a)
             depth += 1

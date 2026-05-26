@@ -2,7 +2,7 @@ import numpy as np
 from connect4.policy import Policy
 from connect4.connect_state import ConnectState
 try:
-    from mcts import mcts_uct_two_player               # ejecución en gradescope
+    from groups.Ana.mcts import mcts_uct_two_player               # ejecución en gradescope
 except ModuleNotFoundError:
     from groups.Ana.mcts import mcts_uct_two_player    # ejecución local desde raíz del proyecto
 
@@ -97,25 +97,32 @@ def _immediate_move(state: ConnectState, player: int):
     return None
 
 
-class AnaPolicy(Policy):
+class BaseAnaPolicy(Policy):
     """
-    Versión 1 — MCTS/UCT two-player para Connect-4.
-
-    En cada turno construye el árbol desde cero con num_simulations simulaciones
-    y lo descarta al terminar. Es la base sobre la que se construye la versión 2.
-
-    Tornillos:
-      num_simulations — más simulaciones produce decisiones más informadas
-      reward_shaping  — activa bonificación intermedia por amenazas de 3 en línea
+    Clase base reutilizable para todas las versiones del agente.
     """
 
-    def __init__(self, num_simulations: int = 200, reward_shaping: bool = False):
+    reward_shaping = False
+    persistent_tree = False
+    quick_win = False
+    smart_rollout = False
+
+    def __init__(self, num_simulations: int = 200):
         self.num_simulations = num_simulations
-        self.reward_shaping = reward_shaping
         self._rng = np.random.RandomState()  # también en __init__ por si mount no se llama
+
+        self._N_s = {}
+        self._N_sa = {}
+        self._Q_sa = {}
 
     def mount(self, timeout=None) -> None:  # timeout en segundos (calibrar simulaciones)
         self._rng = np.random.RandomState()
+
+        if self.persistent_tree:
+            self._N_s = {}
+            self._N_sa = {}
+            self._Q_sa = {}
+
         if timeout is not None:
             # medido localmente: ~107 sims/seg; factor 0.5 de margen para gradescope
             self.num_simulations = max(50, int(timeout * 107 * 0.5))
@@ -130,9 +137,10 @@ class AnaPolicy(Policy):
             return int(self._rng.choice(free)) if free else 0
 
         # si hay jugada ganadora o bloqueo urgente, jugarla sin simular
-        immediate = _immediate_move(root, root_player)
-        if immediate is not None:
-            return immediate
+        if self.quick_win:
+            immediate = _immediate_move(root, root_player)
+            if immediate is not None:
+                return immediate
 
         # simula con MCTS/UCT desde el estado raíz para encontrar la mejor acción
         result = mcts_uct_two_player(
@@ -146,7 +154,12 @@ class AnaPolicy(Policy):
             max_depth=42,        # máximo de movimientos posibles en Connect-4
             exploration_c=1.41,  # valor estándar UCT (sqrt(2))
             reward_shaping=self.reward_shaping,
+            smart_rollout=self.smart_rollout,
             rng=self._rng,
+
+            N_s=self._N_s if self.persistent_tree else None,
+            N_sa=self._N_sa if self.persistent_tree else None,
+            Q_sa=self._Q_sa if self.persistent_tree else None,
         )
 
         best = result["best_action"]
@@ -154,72 +167,32 @@ class AnaPolicy(Policy):
             free = [c for c in range(7) if s[0, c] == 0]
             return int(self._rng.choice(free))
         return int(best)
-
-
-class AnaPolicyPersistent(Policy):
+    
+class AnaPolicyV1(BaseAnaPolicy):
     """
-    Versión 2 — MCTS/UCT con árbol persistente entre turnos.
-
-    A diferencia de la versión 1, N_s, N_sa y Q_sa no se descartan al terminar
-    cada turno sino que se acumulan a lo largo de toda la partida. Así cada turno
-    parte de estadísticas ya exploradas en lugar de cero, lo que implementa
-    aprendizaje online: el agente mejora su política con la experiencia acumulada.
-
-    Tornillos:
-      num_simulations — simulaciones por turno
-      reward_shaping  — activa bonificación intermedia por amenazas de 3 en línea
+    V1 - MCTS con UCT base, rollout aleatorio sin shaping, árbol no persistente.
     """
 
-    def __init__(self, num_simulations: int = 200, reward_shaping: bool = False):
-        self.num_simulations = num_simulations
-        self.reward_shaping = reward_shaping
-        self._rng = np.random.RandomState()  # también en __init__ por si mount no se llama
-        self._N_s:  dict = {}  # estadísticas del árbol, se acumulan entre turnos
-        self._N_sa: dict = {}
-        self._Q_sa: dict = {}
+    pass
 
-    def mount(self, timeout=None) -> None:  # timeout en segundos, lo usa para calibrar simulaciones
-        self._rng = np.random.RandomState()
-        self._N_s  = {}
-        self._N_sa = {}
-        self._Q_sa = {}
-        if timeout is not None:
-            # medido localmente: ~107 sims/seg; factor 0.5 de margen para gradescope
-            self.num_simulations = max(50, int(timeout * 107 * 0.5))
+class AnaPolicyV2(BaseAnaPolicy):
+    """
+    V2 - MCTS con UCT con reward shaping por amenazas de 3 en línea y perspectiva two-player
+    """
+    
+    reward_shaping = True
 
-    def act(self, s: np.ndarray) -> int:
-        root_player = _infer_player(s)
-        root = ConnectState(board=s, player=root_player)
+class AnaPolicyFinal(BaseAnaPolicy):
+    """
+    Versión final con todas las mejoras implementadas:
+      - reward shaping por amenazas de 3 en línea
+      - árbol persistente entre turnos
+      - prioriza jugadas ganadoras o bloqueos urgentes sin simular
+      - rollout inteligente que prioriza jugadas que generan victoria inmediata para el jugador actual
+    """
 
-        if root.is_final():
-            free = root.get_free_cols()
-            return int(self._rng.choice(free)) if free else 0
+    reward_shaping = True
+    persistent_tree = True
+    quick_win = True
+    smart_rollout = True
 
-        # si hay jugada ganadora o bloqueo urgente, jugarla sin simular
-        immediate = _immediate_move(root, root_player)
-        if immediate is not None:
-            return immediate
-
-        # simula con MCTS/UCT desde el estado raíz para encontrar la mejor acción
-        result = mcts_uct_two_player(
-            root_state=root,
-            legal_actions_fn=lambda st: st.get_free_cols(),
-            successor_fn=lambda st, a: st.transition(a),
-            terminal_fn=lambda st: st.is_final(),
-            reward_fn=_reward,
-            root_player=root_player,
-            num_simulations=self.num_simulations,
-            max_depth=42,        # máximo de movimientos posibles en Connect-4
-            exploration_c=1.41,  # valor estándar UCT (sqrt(2))
-            reward_shaping=self.reward_shaping,
-            rng=self._rng,
-            N_s=self._N_s,
-            N_sa=self._N_sa,
-            Q_sa=self._Q_sa,
-        )
-
-        best = result["best_action"]
-        if best is None:  # no debería pasar, pero por si el árbol no exploró nada
-            free = [c for c in range(7) if s[0, c] == 0]
-            return int(self._rng.choice(free))
-        return int(best)
